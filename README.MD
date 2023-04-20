@@ -23,7 +23,7 @@ link:
     - compile
 ```
 ```
-python BuildTool.py build <target-name>
+python BuildTool.py build link
 ```
 
 ## Features
