@@ -11,6 +11,16 @@ This is still very much WIP. Target will remain to write zero code, and let GPT4
 The tool probably still has a lot of bugs, and the code is not optimal. Goal there is also to make GPT4 refactor after every working version.
 
 ## How to use
+Specification of Build Targets are done in .bld files. Format is yaml and spec should be intutive to anyone who has used build tools.
+Ex: 
+```
+link:
+  name: "link"
+  command: "cat folder1/test.txt>test2.txt "
+  outputs: 
+    - "test.txt"
+  dependencies:
+    - compile
 ```
 python BuildTool.py build <target-name>
 ```
