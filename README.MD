@@ -22,6 +22,7 @@ link:
   dependencies:
     - compile
 ```
+```
 python BuildTool.py build <target-name>
 ```
 
