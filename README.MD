@@ -2,7 +2,7 @@
 
 # GPT 4 wrote this Build tool
 
-This is a barebones build tool. Purpose of this tool is to evaluate my understanding and GPT4s understand of what build tools are.
+This is a barebones build tool. Purpose of this tool is to evaluate my understanding and GPT4s understanding of what build tools are.
 
 All the code was written by GPT4. That was the main target. Took about 50 prompts.
 
