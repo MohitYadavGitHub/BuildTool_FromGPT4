@@ -1,0 +1,10 @@
+compile:
+  name: "compile"
+  inputs:
+    - "context.py"
+  command: "python context.py && cat test.txt >test1.txt"
+  outputs:
+    - "test.txt"
+    - "test1.txt"
+  dependencies: []
+
