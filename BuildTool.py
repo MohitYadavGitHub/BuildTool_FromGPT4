@@ -248,6 +248,12 @@ class BuildTool:
             if os.path.exists(cache_file_path):
                 self.logger.info(f"Using cached output file for task '{task['name']}' and output '{cache_info['output_path']}'...")
 
+
+                # Create output directory if necessary
+                output_dir = os.path.dirname(cache_info["output_path"])
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir)
+
                 # Fetch file content from the file store based on the hash of the file
                 file_store_path = os.path.join(self.cache_dir, "filestore", cache_info['cache_file_name'])
                 with open(file_store_path, "rb") as file_store_file:
@@ -305,16 +311,18 @@ class BuildTool:
 
             # Recover output cache info
             output_cache_info_dict = {}
-            for output_rel_path in os.listdir(task_cache_path):
-                output_cache_file_path = os.path.join(task_cache_path, output_rel_path)
-                with open(output_cache_file_path, "r") as f:
-                    cache_file_name = f.read().strip()
+            for root, dirs, files in os.walk(task_cache_path):
+                for file_name in files:
+                    output_rel_path = os.path.relpath(os.path.join(root, file_name), task_cache_path)
+                    output_cache_file_path = os.path.join(task_cache_path, output_rel_path)
+                    with open(output_cache_file_path, "rb") as f:
+                        cache_file_name = f.read().decode().strip()
 
-                output_abs_path = os.path.join(bld_file_dir, output_rel_path)
-                output_cache_info_dict[output_rel_path] = {
-                    "cache_file_name": cache_file_name,
-                    "output_path": output_abs_path
-                }
+                    output_abs_path = os.path.join(bld_file_dir, output_rel_path)
+                    output_cache_info_dict[output_rel_path] = {
+                        "cache_file_name": cache_file_name,
+                        "output_path": output_abs_path
+                    }
 
             # Store metadata for the cache key
             metadata[cache_key] = {
@@ -322,6 +330,7 @@ class BuildTool:
             }
 
         return metadata
+
 
 
     def clean_cache(self):
