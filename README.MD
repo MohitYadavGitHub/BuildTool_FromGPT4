@@ -18,12 +18,14 @@ link:
   name: "link"
   command: "cat folder1/test.txt>test2.txt "
   outputs: 
-    - "test.txt"
+    - "test2.txt"
   dependencies:
     - compile
 ```
 ```
-python BuildTool.py build link
+python BuildTool.py -c "~/.cache" build <target-name>
+or 
+python BuildTool.py build <target-name>
 ```
 
 ## Features

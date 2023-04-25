@@ -349,19 +349,20 @@ def main():
     parser = argparse.ArgumentParser(description="A simple build tool similar to Bazel")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    build_parser = subparsers.add_parser("build", help="Build a specified target")
+    common_arguments = argparse.ArgumentParser(add_help=False)
+    common_arguments.add_argument("-b", "--base-dir", metavar="BASE_DIR", default=".", help="Base directory to search for .bld files")
+
+    parser.add_argument("-c", "--cache-dir", metavar="CACHE_DIR", default=".cache", help="Cache directory to store and retrieve build artifacts")
+
+    build_parser = subparsers.add_parser("build", help="Build a specified target", parents=[common_arguments])
     build_parser.add_argument("target", help="The target task to build")
 
-    clean_parser = subparsers.add_parser("clean", help="Clean the cache directory")
-
-    for subparser in [build_parser, clean_parser]:
-        subparser.add_argument("-b", "--base-dir", default=".", help="Base directory to search for .bld files")
-        subparser.add_argument("-c", "--cache-dir", default=".cache", help="Cache directory to store and retrieve build artifacts")
+    clean_parser = subparsers.add_parser("clean", help="Clean the cache directory", parents=[common_arguments])
 
     args = parser.parse_args()
 
     base_dir = os.path.abspath(args.base_dir)
-    cache_dir = os.path.abspath(args.cache_dir)
+    cache_dir = os.path.abspath(os.path.expanduser(args.cache_dir))
 
     build_tool = BuildTool(base_dir, cache_dir)
 
@@ -379,3 +380,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
