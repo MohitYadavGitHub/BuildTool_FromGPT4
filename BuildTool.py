@@ -79,11 +79,17 @@ class BuildTool:
             file_data = f.read()
             return hashlib.sha1(file_data).hexdigest()
 
-    def expand_glob_patterns(self, patterns):
-        expanded_files = []
+    def expand_glob_patterns(self, patterns, base_dir):
+        expanded_files = set()
         for pattern in patterns:
-            expanded_files.extend(glob.glob(pattern, recursive=True))
-        return expanded_files
+            full_pattern = os.path.join(base_dir, pattern)
+            glob_expanded = glob.glob(full_pattern, recursive=True)
+            if glob_expanded:
+                expanded_files.update(glob_expanded)
+            elif os.path.isfile(full_pattern):
+                expanded_files.add(full_pattern)
+        return list(expanded_files)
+
 
     def get_task_cache_key(self, task):
         cache_key_data = {
@@ -91,7 +97,7 @@ class BuildTool:
             "command": task["command"],
             "dependencies": task.get("dependencies", []),
         }
-
+        
         # Add hashes of dependencies to cache_key_data
         dependency_hashes = {}
         for dep_name in task.get("dependencies", []):
@@ -100,11 +106,13 @@ class BuildTool:
             dependency_hashes[dep_name] = dep_cache_key
         cache_key_data["dependency_hashes"] = dependency_hashes
 
+        bld_file_dir = os.path.dirname(self.task_bld_files[task["name"]])
+        
         if "inputs" in task:
-            expanded_inputs = self.expand_glob_patterns(task["inputs"])
+            expanded_inputs = self.expand_glob_patterns(task["inputs"], bld_file_dir)
             inputs_hash = {input_file: self.hash_file(input_file) for input_file in expanded_inputs}
             cache_key_data["inputs"] = inputs_hash
-
+        
         cache_key_str = yaml.dump(cache_key_data)
         return hashlib.sha1(cache_key_str.encode("utf-8")).hexdigest()
 
@@ -189,10 +197,10 @@ class BuildTool:
         if not os.path.exists(filestore_path):
             os.makedirs(filestore_path)
 
-        # Save the task name to a file in the cache folder
-        task_name_file_path = os.path.join(cache_folder_path, "task_name.txt")
-        with open(task_name_file_path, "w") as task_name_file:
-            task_name_file.write(task["name"])
+        # # Save the task name to a file in the cache folder
+        # task_name_file_path = os.path.join(cache_folder_path, "task_name.txt")
+        # with open(task_name_file_path, "w") as task_name_file:
+        #     task_name_file.write(task["name"])
 
         bld_file_dir = os.path.dirname(self.task_bld_files[task["name"]])
 
@@ -224,29 +232,16 @@ class BuildTool:
 
 
     def reuse_cached_output(self, task, cache_metadata):
-        task_name = task["name"]
-        if task_name not in cache_metadata:
+        task_key = self.get_task_cache_key(task)
+        if task_key not in cache_metadata.keys():
             return False
 
-        cached_task = cache_metadata[task_name]
-
-        # Compare the input hashes in the cached_task with the current input hashes
-        if "inputs" in task:
-            current_input_hashes = {
-                input_file: self.hash_file(input_file)
-                for input_file in self.expand_glob_patterns(task["inputs"])
-            }
-        else:
-            current_input_hashes = {}
-
-        if "inputs" in cached_task:
-            if cached_task["inputs"] != current_input_hashes:
-                return False
+        cached_task = cache_metadata[task_key]
 
         task["output_cache_info"] = cached_task["output_cache_info"]
         output_cache_info = task.get("output_cache_info", {})
         for curFile, cache_info in output_cache_info.items():
-            cache_folder_path = os.path.join(self.cache_dir, self.get_task_cache_key(task))
+            cache_folder_path = os.path.join(self.cache_dir, task_key)
             relative_output_path = curFile
             cache_file_path = os.path.join(cache_folder_path, relative_output_path)
 
@@ -269,6 +264,7 @@ class BuildTool:
 
 
 
+
     def execute_tasks(self, target_name, tasks):
         dag = self.build_dag(tasks)
 
@@ -280,7 +276,6 @@ class BuildTool:
         
         # Reconstruct cache metadata
         cache_metadata = self.reconstruct_cache_metadata()
-
         for task_name in task_order:
             task = tasks[task_name]
 
@@ -293,45 +288,41 @@ class BuildTool:
 
 
     def reconstruct_cache_metadata(self):
-            metadata = {}
-            for task_hash in os.listdir(self.cache_dir):
-                task_cache_path = os.path.join(self.cache_dir, task_hash)
-                if not os.path.isdir(task_cache_path):
-                    continue
+        metadata = {}
+        for cache_key in os.listdir(self.cache_dir):
+            task_cache_path = os.path.join(self.cache_dir, cache_key)
+            if not os.path.isdir(task_cache_path):
+                continue
 
-                task_name_file_path = os.path.join(task_cache_path, "task_name.txt")
-                if not os.path.exists(task_name_file_path):
-                    continue
+            bld_file_dir = None
+            for task, bld_file in self.task_bld_files.items():
+                if self.get_task_cache_key(self.tasks[task]) == cache_key:
+                    bld_file_dir = os.path.dirname(bld_file)
+                    break
 
-                with open(task_name_file_path, "r") as task_name_file:
-                    task_name = task_name_file.read().strip()
+            if bld_file_dir is None:
+                continue
 
-                bld_file_dir = os.path.dirname(self.task_bld_files[task_name])
+            # Recover output cache info
+            output_cache_info_dict = {}
+            for output_rel_path in os.listdir(task_cache_path):
+                output_cache_file_path = os.path.join(task_cache_path, output_rel_path)
+                with open(output_cache_file_path, "r") as f:
+                    cache_file_name = f.read().strip()
 
-                # Recover output cache info
-                output_cache_info_dict = {}
-                for output_rel_path in os.listdir(task_cache_path):
-                    if output_rel_path == "task_name.txt":
-                        continue
+                output_abs_path = os.path.join(bld_file_dir, output_rel_path)
+                output_cache_info_dict[output_rel_path] = {
+                    "cache_file_name": cache_file_name,
+                    "output_path": output_abs_path
+                }
 
-                    output_cache_file_path = os.path.join(task_cache_path, output_rel_path)
-                    with open(output_cache_file_path, "r") as f:
-                        cache_file_name = f.read().strip()
+            # Store metadata for the cache key
+            metadata[cache_key] = {
+                "output_cache_info": output_cache_info_dict,
+            }
 
-                    output_abs_path = os.path.join(bld_file_dir, output_rel_path)
-                    output_cache_info_dict[output_rel_path] = {
-                        "cache_file_name": cache_file_name,
-                        "output_path": output_abs_path
-                    }
+        return metadata
 
-                # Store metadata for task
-                if task_name is not None:
-                    metadata[task_name] = {
-                        "task_hash": task_hash,
-                        "output_cache_info": output_cache_info_dict
-                    }
-
-            return metadata
 
     def clean_cache(self):
         if os.path.exists(self.cache_dir):
