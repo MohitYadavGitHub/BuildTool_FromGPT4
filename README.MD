@@ -38,6 +38,7 @@ python BuildTool.py build <target-name>
 ## Future Features
 * Remote cache
 * Configuration options , for ex: to have a a local or remtoe cache folder
+* Parallelization (MutliThread,Remote Execution)
 * ...
 
 ## Currrent API spport
