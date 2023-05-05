@@ -11,7 +11,7 @@ import shutil
 import datetime
 import pdb
 import concurrent.futures
-import collections
+from queue import Queue
 import threading
 
 class BuildTool:
@@ -274,47 +274,60 @@ class BuildTool:
 
 
     def execute_tasks(self, target_name, tasks):
-        dag = self.build_dag(tasks)
+            dag = self.build_dag(tasks)
 
-        if not nx.is_directed_acyclic_graph(dag):
-            self.logger.error("Circular dependencies detected in the build graph.")
-            return
+            if not nx.is_directed_acyclic_graph(dag):
+                self.logger.error("Circular dependencies detected in the build graph.")
+                return
 
-        task_order = self.get_task_order(dag, target_name)
+            task_order = self.get_task_order(dag, target_name)
+            cache_metadata = self.reconstruct_cache_metadata()
 
-        # Reconstruct cache metadata
-        cache_metadata = self.reconstruct_cache_metadata()
+            pending_tasks = {task_name: tasks[task_name] for task_name in task_order}
+            completed_tasks = set()
 
-        # Initialize the queue and the remaining dependencies count
-        queue = collections.deque(task_order)
-        remaining_dependencies = {task_name: len(list(dag.predecessors(task_name))) for task_name in task_order}
+            def execute_ready_tasks():
+                nonlocal completed_tasks
 
-        # Function to execute a single task
-        def execute_single_task(task_name):
-            task = tasks[task_name]
-            if self.reuse_cached_output(task, cache_metadata):
-                self.logger.info(f"Using cached output for task '{task['name']}'...")
-            else:
-                self.logger.info(f"Executing task '{task['name']}'...")
-                self.execute_task(task)
+                # Find tasks whose dependencies are all completed
+                ready_tasks = [
+                    task_name for task_name, task in pending_tasks.items()
+                    if set(task.get("dependencies", [])).issubset(completed_tasks)
+                ]
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            while queue:
-                ready_tasks = [task_name for task_name in queue if remaining_dependencies[task_name] == 0]
+                for task_name in ready_tasks:
+                    task = pending_tasks.pop(task_name)
+                    if self.reuse_cached_output(task, cache_metadata):
+                        self.logger.info(f"Using cached output for task '{task['name']}'...")
+                        completed_tasks.add(task_name)
+                    else:
+                        self.logger.info(f"Executing task '{task['name']}'...")
+                        futures[executor.submit(self.execute_task, task)] = task_name
 
-                if not ready_tasks:
-                    self.logger.error("Deadlock detected in the build graph.")
-                    break
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = {}
 
-                futures = {executor.submit(execute_single_task, task_name): task_name for task_name in ready_tasks}
+                while pending_tasks:
+                    execute_ready_tasks()
 
-                for future in concurrent.futures.as_completed(futures):
-                    completed_task_name = futures[future]
-                    queue.remove(completed_task_name)
+                    if not futures:
+                        break
 
-                    # Update the remaining dependencies count for the dependents of the completed task
-                    for dependent in dag.successors(completed_task_name):
-                        remaining_dependencies[dependent] -= 1
+                    done, _ = concurrent.futures.wait(
+                        futures.keys(), timeout=None, return_when=concurrent.futures.FIRST_COMPLETED
+                    )
+
+                    for future in done:
+                        task_name = futures.pop(future)
+                        completed_tasks.add(task_name)
+                        try:
+                            future.result()  # Raise exception if the task failed
+                        except Exception as e:
+                            self.logger.error(f"Task '{task_name}' failed with an error: {str(e)}")
+                            return
+
+                # Final check for any remaining ready tasks
+                execute_ready_tasks()
 
 
     def reconstruct_cache_metadata(self):

@@ -6,3 +6,4 @@ link:
   dependencies:
     - compile
     - randomTask
+    - randomTask2
