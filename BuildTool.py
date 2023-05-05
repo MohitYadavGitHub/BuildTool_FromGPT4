@@ -11,7 +11,7 @@ import shutil
 import datetime
 import pdb
 import concurrent.futures
-import queue
+import collections
 import threading
 
 class BuildTool:
@@ -118,9 +118,6 @@ class BuildTool:
         cache_key_str = yaml.dump(cache_key_data)
         return hashlib.sha1(cache_key_str.encode("utf-8")).hexdigest()
 
-
-
-
     def build_dag(self, tasks):
         dag = nx.DiGraph()
         for task_name, task in tasks.items():
@@ -183,8 +180,6 @@ class BuildTool:
 
         output_cache_info = self.cache_task_output(task, cache_folder_path)
 
-
-
     def get_file_hash(file_path):
         with open(file_path, 'rb') as file:
             file_data = file.read()
@@ -241,7 +236,6 @@ class BuildTool:
         return task_levels
 
 
-
     def reuse_cached_output(self, task, cache_metadata):
         task_key = self.get_task_cache_key(task)
         if task_key not in cache_metadata.keys():
@@ -279,12 +273,6 @@ class BuildTool:
         return True
 
 
-
-
-
-
-
-
     def execute_tasks(self, target_name, tasks):
         dag = self.build_dag(tasks)
 
@@ -297,44 +285,36 @@ class BuildTool:
         # Reconstruct cache metadata
         cache_metadata = self.reconstruct_cache_metadata()
 
-        def execute_task_recursive(task_name):
-            if task_completion[task_name]:
-                return
+        # Initialize the queue and the remaining dependencies count
+        queue = collections.deque(task_order)
+        remaining_dependencies = {task_name: len(list(dag.predecessors(task_name))) for task_name in task_order}
 
+        # Function to execute a single task
+        def execute_single_task(task_name):
             task = tasks[task_name]
-
             if self.reuse_cached_output(task, cache_metadata):
                 self.logger.info(f"Using cached output for task '{task['name']}'...")
-                task_completion[task_name] = True
-                return
-
-            child_tasks = list(dag.predecessors(task_name))
-            if child_tasks:
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    executor.map(execute_task_recursive, child_tasks)
-
-            dependencies_completed = all([task_completion[dep] for dep in child_tasks])
-
-            if dependencies_completed:
+            else:
                 self.logger.info(f"Executing task '{task['name']}'...")
                 self.execute_task(task)
-                task_completion[task_name] = True
 
-        task_completion = {task_name: False for task_name in task_order}
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            while queue:
+                ready_tasks = [task_name for task_name in queue if remaining_dependencies[task_name] == 0]
 
-        # Log message for parallel execution of child tasks
-        parallel_tasks = ', '.join([task for task in task_order if dag.predecessors(task)])
-        self.logger.info(f"Executing tasks {parallel_tasks} in parallel...")
+                if not ready_tasks:
+                    self.logger.error("Deadlock detected in the build graph.")
+                    break
 
-        for task_name in task_order:
-            if not task_completion[task_name]:
-                execute_task_recursive(task_name)
+                futures = {executor.submit(execute_single_task, task_name): task_name for task_name in ready_tasks}
 
+                for future in concurrent.futures.as_completed(futures):
+                    completed_task_name = futures[future]
+                    queue.remove(completed_task_name)
 
-
-
-
-
+                    # Update the remaining dependencies count for the dependents of the completed task
+                    for dependent in dag.successors(completed_task_name):
+                        remaining_dependencies[dependent] -= 1
 
 
     def reconstruct_cache_metadata(self):
@@ -383,11 +363,6 @@ class BuildTool:
             print(f"Cache directory '{self.cache_dir}' has been cleaned.")
         else:
             print(f"Cache directory '{self.cache_dir}' does not exist.")
-
-
-
-
-
 
 def main():
     parser = argparse.ArgumentParser(description="A simple build tool similar to Bazel")
