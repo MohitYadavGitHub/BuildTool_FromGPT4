@@ -10,7 +10,7 @@ import argparse
 import shutil
 import datetime
 import pdb
-
+from concurrent.futures import ThreadPoolExecutor
 
 class BuildTool:
     def __init__(self, base_dir, cache_dir):
@@ -279,10 +279,12 @@ class BuildTool:
             return
 
         task_order = self.get_task_order(dag, target_name)
-        
+
         # Reconstruct cache metadata
         cache_metadata = self.reconstruct_cache_metadata()
-        for task_name in task_order:
+
+        # Helper function to execute tasks in parallel
+        def execute_task_wrapper(task_name):
             task = tasks[task_name]
 
             # Try to reuse the cached output if possible
@@ -291,6 +293,10 @@ class BuildTool:
             else:
                 self.logger.info(f"Executing task '{task['name']}'...")
                 self.execute_task(task)
+
+        # Execute tasks in parallel
+        with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+            executor.map(execute_task_wrapper, task_order)
 
 
     def reconstruct_cache_metadata(self):
@@ -352,7 +358,7 @@ def main():
     common_arguments = argparse.ArgumentParser(add_help=False)
     common_arguments.add_argument("-b", "--base-dir", metavar="BASE_DIR", default=".", help="Base directory to search for .bld files")
 
-    parser.add_argument("-c", "--cache-dir", metavar="CACHE_DIR", default=".cache", help="Cache directory to store and retrieve build artifacts")
+    parser.add_argument("-c", "--cache-dir", metavar="CACHE_DIR", default="~/.cache", help="Cache directory to store and retrieve build artifacts")
 
     build_parser = subparsers.add_parser("build", help="Build a specified target", parents=[common_arguments])
     build_parser.add_argument("target", help="The target task to build")
