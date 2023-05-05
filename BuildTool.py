@@ -11,6 +11,7 @@ import shutil
 import datetime
 import pdb
 import concurrent.futures
+import queue
 
 class BuildTool:
     def __init__(self, base_dir, cache_dir):
@@ -285,24 +286,39 @@ class BuildTool:
             return
 
         task_order = self.get_task_order(dag, target_name)
-        task_levels = self.get_task_levels(dag, task_order)
 
         # Reconstruct cache metadata
         cache_metadata = self.reconstruct_cache_metadata()
 
-        max_task_level = max(task_levels.values())
+        completed_tasks = set()
+        task_queue = queue.Queue()
+
+        for task_name in task_order:
+            if not nx.ancestors(dag, task_name):
+                task_queue.put(task_name)
+
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            for level in range(max_task_level + 1):
-                level_tasks = [task_name for task_name, task_level in task_levels.items() if task_level == level]
+            while not task_queue.empty():
                 futures = []
-                for task_name in level_tasks:
+                while not task_queue.empty():
+                    task_name = task_queue.get()
                     task = tasks[task_name]
+
                     if self.reuse_cached_output(task, cache_metadata):
                         self.logger.info(f"Using cached output for task '{task['name']}'...")
+                        completed_tasks.add(task_name)
                     else:
                         self.logger.info(f"Executing task '{task['name']}'...")
-                        futures.append(executor.submit(self.execute_task, task))
+                        future = executor.submit(self.execute_task, task)
+                        future.add_done_callback(lambda _: completed_tasks.add(task_name))
+                        futures.append(future)
+
                 concurrent.futures.wait(futures)
+
+                # Add tasks whose dependencies are met to the task queue
+                for task_name in task_order:
+                    if task_name not in completed_tasks and set(dag.predecessors(task_name)) <= completed_tasks:
+                        task_queue.put(task_name)
 
 
     def reconstruct_cache_metadata(self):
