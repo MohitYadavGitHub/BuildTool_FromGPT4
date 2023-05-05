@@ -5,3 +5,4 @@ link:
     - "test2.txt"
   dependencies:
     - compile
+    - randomTask
