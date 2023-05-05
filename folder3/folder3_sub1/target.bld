@@ -1,5 +1,5 @@
-randomTask2:
-  name: "randomTask2"
+randomTask2_sub:
+  name: "randomTask2_sub"
   inputs:
     - "awesomeCode.src"
   command: " cat awesomeCode.src >output.txt"
