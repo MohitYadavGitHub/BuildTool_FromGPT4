@@ -1,0 +1,9 @@
+randomTask:
+  name: "randomTask"
+  inputs:
+    - "awesomeCode.src"
+  command: " cat awesomeCode.src >output.txt"
+  outputs:
+    - "output.txt"
+  dependencies: []
+
