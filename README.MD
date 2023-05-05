@@ -4,6 +4,8 @@
 
 This is a barebones build tool. Purpose of this tool is to evaluate my understanding and GPT4s understanding of what build tools are.
 
+For those curious about what the process is like have a look at #4.
+
 All the code was written by GPT4. That was the main target. Took about 50 prompts. Choice of libraries are done by it as well, although networkx is overkill, and will be changed in the future.
 
 This is still very much WIP. Target will remain to write zero code, and let GPT4 write everything.
