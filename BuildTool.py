@@ -298,13 +298,17 @@ class BuildTool:
 
             for task_name in ready_tasks:
                 task = pending_tasks.pop(task_name)
-                # Ensure the root task is always checked for execution
-                if not self.reuse_cached_output(task, cache_metadata):
+                if task_name == target_name or not self.reuse_cached_output(task, cache_metadata):
                     self.logger.info(f"Executing task '{task['name']}'...")
                     futures[executor.submit(self.execute_task, task)] = task_name
                 else:
                     self.logger.info(f"Using cached output for task '{task['name']}'...")
                     completed_tasks.add(task_name)
+
+                    # Create a dummy Future object and set its result to None
+                    dummy_future = concurrent.futures.Future()
+                    dummy_future.set_result(None)
+                    futures[dummy_future] = task_name
 
                 
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -316,8 +320,8 @@ class BuildTool:
             while pending_tasks:
                 execute_ready_tasks()
 
-                # if not futures:
-                #     break
+                if not futures:
+                    break
 
                 done, _ = concurrent.futures.wait(
                     futures.keys(), timeout=None, return_when=concurrent.futures.FIRST_COMPLETED
