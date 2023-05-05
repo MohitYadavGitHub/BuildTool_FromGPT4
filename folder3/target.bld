@@ -1,10 +1,10 @@
-randomTask2:
-  name: "randomTask2"
+randomTask3:
+  name: "randomTask3"
   inputs:
     - "awesomeCode.src"
   command: " cat awesomeCode.src >output.txt"
   outputs:
     - "output.txt"
   dependencies: 
-    - randomTask2_sub
+    - randomTask3_sub
 

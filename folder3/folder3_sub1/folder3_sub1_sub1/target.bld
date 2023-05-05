@@ -1,9 +1,9 @@
-randomTask3_sub:
-  name: "randomTask3_sub"
+randomTask3_sub_sub:
+  name: "randomTask3_sub_sub"
   inputs:
     - "awesomeCode.src"
   command: " cat awesomeCode.src >output.txt"
   outputs:
     - "output.txt"
-  dependencies: [randomTask3_sub_sub]
+  dependencies: []
 

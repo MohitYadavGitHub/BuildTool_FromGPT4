@@ -297,14 +297,19 @@ class BuildTool:
 
             for task_name in ready_tasks:
                 task = pending_tasks.pop(task_name)
-                if self.reuse_cached_output(task, cache_metadata):
-                    self.logger.info(f"Using cached output for task '{task['name']}'...")
-                    completed_tasks.add(task_name)
-                else:
+                # Ensure the root task is always checked for execution
+                if task_name == target_name or not self.reuse_cached_output(task, cache_metadata):
                     self.logger.info(f"Executing task '{task['name']}'...")
                     futures[executor.submit(self.execute_task, task)] = task_name
+                else:
+                    self.logger.info(f"Using cached output for task '{task['name']}'...")
+                    completed_tasks.add(task_name)
+
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Log the number of threads actively being used
+            self.logger.info(f"Number of threads actively being used: {executor._max_workers}")
+            
             futures = {}
 
             while pending_tasks:
