@@ -10,7 +10,7 @@ import argparse
 import shutil
 import datetime
 import pdb
-from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures
 
 class BuildTool:
     def __init__(self, base_dir, cache_dir):
@@ -229,6 +229,15 @@ class BuildTool:
         return output_cache_info
 
 
+    def get_task_levels(self, dag, task_order):
+        task_levels = {}
+        for task_name in task_order:
+            level = 0
+            for ancestor in nx.ancestors(dag, task_name):
+                level = max(level, task_levels[ancestor] + 1)
+            task_levels[task_name] = level
+        return task_levels
+
 
 
     def reuse_cached_output(self, task, cache_metadata):
@@ -268,9 +277,6 @@ class BuildTool:
         return True
 
 
-
-
-
     def execute_tasks(self, target_name, tasks):
         dag = self.build_dag(tasks)
 
@@ -279,24 +285,24 @@ class BuildTool:
             return
 
         task_order = self.get_task_order(dag, target_name)
+        task_levels = self.get_task_levels(dag, task_order)
 
         # Reconstruct cache metadata
         cache_metadata = self.reconstruct_cache_metadata()
 
-        # Helper function to execute tasks in parallel
-        def execute_task_wrapper(task_name):
-            task = tasks[task_name]
-
-            # Try to reuse the cached output if possible
-            if self.reuse_cached_output(task, cache_metadata):
-                self.logger.info(f"Using cached output for task '{task['name']}'...")
-            else:
-                self.logger.info(f"Executing task '{task['name']}'...")
-                self.execute_task(task)
-
-        # Execute tasks in parallel
-        with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-            executor.map(execute_task_wrapper, task_order)
+        max_task_level = max(task_levels.values())
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for level in range(max_task_level + 1):
+                level_tasks = [task_name for task_name, task_level in task_levels.items() if task_level == level]
+                futures = []
+                for task_name in level_tasks:
+                    task = tasks[task_name]
+                    if self.reuse_cached_output(task, cache_metadata):
+                        self.logger.info(f"Using cached output for task '{task['name']}'...")
+                    else:
+                        self.logger.info(f"Executing task '{task['name']}'...")
+                        futures.append(executor.submit(self.execute_task, task))
+                concurrent.futures.wait(futures)
 
 
     def reconstruct_cache_metadata(self):
