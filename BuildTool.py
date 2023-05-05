@@ -13,6 +13,7 @@ import pdb
 import concurrent.futures
 from queue import Queue
 import threading
+from pprint import pprint as pp
 
 class BuildTool:
     def __init__(self, base_dir, cache_dir):
@@ -285,7 +286,7 @@ class BuildTool:
 
         pending_tasks = {task_name: tasks[task_name] for task_name in task_order}
         completed_tasks = set()
-
+        
         def execute_ready_tasks():
             nonlocal completed_tasks
 
@@ -298,14 +299,14 @@ class BuildTool:
             for task_name in ready_tasks:
                 task = pending_tasks.pop(task_name)
                 # Ensure the root task is always checked for execution
-                if task_name == target_name or not self.reuse_cached_output(task, cache_metadata):
+                if not self.reuse_cached_output(task, cache_metadata):
                     self.logger.info(f"Executing task '{task['name']}'...")
                     futures[executor.submit(self.execute_task, task)] = task_name
                 else:
                     self.logger.info(f"Using cached output for task '{task['name']}'...")
                     completed_tasks.add(task_name)
 
-
+                
         with concurrent.futures.ThreadPoolExecutor() as executor:
             # Log the number of threads actively being used
             self.logger.info(f"Number of threads actively being used: {executor._max_workers}")
@@ -315,13 +316,13 @@ class BuildTool:
             while pending_tasks:
                 execute_ready_tasks()
 
-                if not futures:
-                    break
+                # if not futures:
+                #     break
 
                 done, _ = concurrent.futures.wait(
                     futures.keys(), timeout=None, return_when=concurrent.futures.FIRST_COMPLETED
                 )
-
+                
                 for future in done:
                     task_name = futures.pop(future)
                     completed_tasks.add(task_name)
@@ -330,9 +331,12 @@ class BuildTool:
                     except Exception as e:
                         self.logger.error(f"Task '{task_name}' failed with an error: {str(e)}")
                         return
-
             # Final check for any remaining ready tasks
             execute_ready_tasks()
+            # After the final call to execute_ready_tasks()
+            if pending_tasks:
+                self.logger.error(f"The following tasks were not executed: {', '.join(pending_tasks.keys())}")
+                raise RuntimeError("Some tasks were not executed due to unresolved dependencies or other issues.")
 
 
     def reconstruct_cache_metadata(self):
