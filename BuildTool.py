@@ -298,7 +298,7 @@ class BuildTool:
 
             for task_name in ready_tasks:
                 task = pending_tasks.pop(task_name)
-                if task_name == target_name or not self.reuse_cached_output(task, cache_metadata):
+                if not self.reuse_cached_output(task, cache_metadata):
                     self.logger.info(f"Executing task '{task['name']}'...")
                     futures[executor.submit(self.execute_task, task)] = task_name
                 else:
@@ -330,13 +330,16 @@ class BuildTool:
                 for future in done:
                     task_name = futures.pop(future)
                     completed_tasks.add(task_name)
+
+                    # Add log entry for task completion
+                    self.logger.info(f"Task '{task_name}' completed.")
                     try:
                         future.result()  # Raise exception if the task failed
                     except Exception as e:
                         self.logger.error(f"Task '{task_name}' failed with an error: {str(e)}")
                         return
             # Final check for any remaining ready tasks
-            execute_ready_tasks()
+            # execute_ready_tasks()
             # After the final call to execute_ready_tasks()
             if pending_tasks:
                 self.logger.error(f"The following tasks were not executed: {', '.join(pending_tasks.keys())}")
